@@ -65,15 +65,11 @@ def login(filepath, password):
 
     # Decrypt data and start the application
     data = fernet.decrypt(encrypted_data)
-    inner_cli(obj={'data':data, 'salt':salt, 'fernet':fernet})
+    start_shell(data, salt, fernet)
 
 
-@click.group(invoke_without_command=True)
-@click.pass_context
-def inner_cli(ctx):
-    if ctx.invoked_subcommand is None:
-        # ctx.invoke(repl)
-        print("here")
+def start_shell(data, salt, fernet):
+    pass
 
 
 def delete_entry():
