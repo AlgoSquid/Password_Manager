@@ -27,12 +27,12 @@ def create_store():
     pwd = click.prompt("Enter master password", hide_input=True, confirmation_prompt=True)
 
     # Create empty store, salt for encryption and encryption scheme
-    json_data = json.dumps({}).encode('utf-8')
+    empty_store = {}
     salt = os.urandom(16)
     fernet = _create_fernet(salt, pwd)
 
     # Encrypt and save to file
-    _save_password_store(json_data, store_name, salt, fernet)
+    _save_password_store(empty_store, store_name, salt, fernet)
     click.echo(f"Succesfully created password store: {store_name}")
 
 
@@ -86,9 +86,6 @@ def _save_password_store(data_store, filepath, salt, fernet):
     with open(filepath, mode='wb') as out_file:
         out_file.writelines((salt, test_word, encrypted_data))
 
-    # TODO: Remove
-    print("The password was just stored ;)")
-
 
 class PasswordStoreShell(cmd.Cmd):
     intro = 'Welcome to the password store shell (pss).   Type help or ? to list commands.\n'
@@ -105,8 +102,13 @@ class PasswordStoreShell(cmd.Cmd):
         """
         Store password by specifying identifier and afterwards password:  store identifier 
         """
+        # Do not handle empty strings
+        if arg is None or arg == "":
+            return
+
         # Ensure we do not override by mistake
         if arg in self.data_store:
+            answer = None
             while answer not in ('y', 'N'):
                 answer = input(f"{arg} already exist as identifier in the store, override? [y/N]")
                 if answer == 'y':
@@ -126,8 +128,13 @@ class PasswordStoreShell(cmd.Cmd):
         """
         Delete password by specifying identifier:  delete identifier 
         """
+        # Do not handle empty strings
+        if arg is None or arg == "":
+            return
+        
         # Ensure we do not override by mistake
         if arg in self.data_store:
+            answer = None
             while answer not in ('y', 'N'):
                 answer = input(f"Are you certain you wish to delete {arg}? [y/N]")
                 if answer == 'y':
@@ -140,7 +147,7 @@ class PasswordStoreShell(cmd.Cmd):
                 else:
                     print("Invalid answer, try again!")
         else:
-            print(f"Error: {arg} is not in password store")
+            print(f"*** Error: {arg} is not in password store")
 
     def do_list(self, arg):
         """
@@ -153,18 +160,32 @@ class PasswordStoreShell(cmd.Cmd):
         """
         Retrieve password by specifiying identifier:  retrieve identifier 
         """
+        # Do not handle empty strings
+        if arg is None or arg == "":
+            return
+
         if arg in self.data_store:
             print(f"{arg}: {self.data_store[arg]}")
         else:
-            print(f"Error: {arg} is not in password store")
+            print(f"*** Error: {arg} is not in password store")
 
     def do_change_master_password(self, arg):
         """
         Change master password by specifying new password in prompt:  change_master_password
         """
-        new_password = getpass.getpass("new master password:")
+        while True:
+            new_psw_1 = getpass.getpass("Enter new master password:")
+            new_psw_2 = getpass.getpass("Repeat for confirmation:")
+            if new_psw_1 is None or new_psw_1 == "":
+                print("*** Error: The password cannot be empty")
+            elif new_psw_1 == new_psw_2:
+                break
+            else:
+                print("*** Error: The two entered values do not match")
+
         self.salt = os.urandom(16)
-        self.fernet = _create_fernet(self.salt, new_password)
+        self.fernet = _create_fernet(self.salt, new_psw_1)
+        print("Successfully changed master password")
 
     def do_exit(self, arg):
         """
@@ -178,9 +199,7 @@ class PasswordStoreShell(cmd.Cmd):
         Saves the current password store with the current fernet and salt.
         """
         _save_password_store(self.data_store, self.filepath, self.salt, self.fernet)
-
-        # TODO: Remove
-        print("The password was just stored hahahaha")
+        return stop
 
 
 if __name__ == "__main__":
