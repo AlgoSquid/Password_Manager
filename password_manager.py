@@ -1,7 +1,7 @@
 from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 from cryptography.hazmat.backends import default_backend
 from cryptography.fernet import Fernet
-import click, json, os, base64
+import click, json, os, base64, cmd, getpass
 
 
 @click.group()
@@ -31,14 +31,8 @@ def create_store():
     salt = os.urandom(16)
     fernet = _create_fernet(salt, pwd)
 
-    # Encrypt data and test word
-    encrypted_data = fernet.encrypt(json_data)
-    test_word = fernet.encrypt(b'test')
-
-    # Save bytes to file
-    with open(store_name, mode='wb') as out_file:
-        out_file.writelines((salt, test_word, encrypted_data))
-
+    # Encrypt and save to file
+    _save_password_store(json_data, store_name, salt, fernet)
     click.echo(f"Succesfully created password store: {store_name}")
 
 
@@ -63,20 +57,9 @@ def login(filepath, password):
             click.echo("Incorrect password!")
             return
 
-    # Decrypt data and start the application
+    # Decrypt data and start the shell
     data = fernet.decrypt(encrypted_data)
-    start_shell(data, salt, fernet)
-
-
-def start_shell(data, salt, fernet):
-    pass
-
-
-def delete_entry():
-    """
-    Delete user(name)/password entry
-    """
-    click.confirm("Are you sure you wish to delete this entry?", abort=True)
+    PasswordStoreShell(data, filepath, salt, fernet).cmdloop()
 
 
 def _create_fernet(salt, password):
@@ -90,19 +73,115 @@ def _create_fernet(salt, password):
     return Fernet(key)
 
 
+def _save_password_store(data_store, filepath, salt, fernet):
+    """
+    Saves password store encrypted on disk. Input is password store as json, 
+    the file path to write the encrypted file to, salt as bytes and a fernet
+    object for symmetric encryption. The result is a file on the form:
+    [salt 16 bytes][the word test encrypted 100 bytes][data store encrypted remaining bytes]
+    """
+    encoded_data_Store = json.dumps(data_store).encode('utf-8')
+    encrypted_data = fernet.encrypt(encoded_data_Store)
+    test_word = fernet.encrypt(b'test')
+    with open(filepath, mode='wb') as out_file:
+        out_file.writelines((salt, test_word, encrypted_data))
+
+    # TODO: Remove
+    print("The password was just stored ;)")
+
+
+class PasswordStoreShell(cmd.Cmd):
+    intro = 'Welcome to the password store shell (pss).   Type help or ? to list commands.\n'
+    prompt = '(pss) '
+
+    def __init__(self, data_store, filepath, salt, fernet):
+        super().__init__()
+        self.data_store = json.loads(data_store.decode('utf-8'))
+        self.filepath = filepath
+        self.salt = salt
+        self.fernet = fernet
+
+    def do_store(self, arg):
+        """
+        Store password by specifying identifier and afterwards password:  store identifier 
+        """
+        # Ensure we do not override by mistake
+        if arg in self.data_store:
+            while answer not in ('y', 'N'):
+                answer = input(f"{arg} already exist as identifier in the store, override? [y/N]")
+                if answer == 'y':
+                    break
+                elif answer == 'N':
+                    print("Aborted!")
+                    return
+                else:
+                    print("Invalid answer, try again!")
+
+        # Get password and store identifier and password
+        password = getpass.getpass(f"password for {arg}:")
+        self.data_store[arg] = password
+        print(f"{arg} was successfully stored")
+
+    def do_delete(self, arg):
+        """
+        Delete password by specifying identifier:  delete identifier 
+        """
+        # Ensure we do not override by mistake
+        if arg in self.data_store:
+            while answer not in ('y', 'N'):
+                answer = input(f"Are you certain you wish to delete {arg}? [y/N]")
+                if answer == 'y':
+                    self.data_store.pop(arg)
+                    print(f"{arg} was successfully deleted")
+                    return
+                elif answer == 'N':
+                    print("Aborted!")
+                    return
+                else:
+                    print("Invalid answer, try again!")
+        else:
+            print(f"Error: {arg} is not in password store")
+
+    def do_list(self, arg):
+        """
+        List all passoword idenfiers alphabetically:  list
+        """
+        for identifier in sorted(self.data_store.keys()): 
+            print(identifier) 
+
+    def do_retrieve(self, arg):
+        """
+        Retrieve password by specifiying identifier:  retrieve identifier 
+        """
+        if arg in self.data_store:
+            print(f"{arg}: {self.data_store[arg]}")
+        else:
+            print(f"Error: {arg} is not in password store")
+
+    def do_change_master_password(self, arg):
+        """
+        Change master password by specifying new password in prompt:  change_master_password
+        """
+        new_password = getpass.getpass("new master password:")
+        self.salt = os.urandom(16)
+        self.fernet = _create_fernet(self.salt, new_password)
+
+    def do_exit(self, arg):
+        """
+        Stop the password store shell and save the password store:  exit
+        """
+        return True
+
+    def postcmd(self, stop, line):
+        """
+        Hook method executed after a command has finished being executed.
+        Saves the current password store with the current fernet and salt.
+        """
+        _save_password_store(self.data_store, self.filepath, self.salt, self.fernet)
+
+        # TODO: Remove
+        print("The password was just stored hahahaha")
+
+
 if __name__ == "__main__":
     cli()
-
-
-# Plan for development:
-# CLI: 
-
-# Create command: Create password store given name, prompt for master pasword twice.
-# Login command: Open password store, prompt for master password and leads to the following commands:
-
-
-# Store command: Store a user(name)/password pair, two input steps with verification
-# Delete command: Input user(name) and delete entry in store, use confirmation
-# List command: List all user(names) in the manager
-# Print command: Input user(name) and retrieve password in stdout
-# Change master password command: Change the masster password. Double prompt for the new password twice.
