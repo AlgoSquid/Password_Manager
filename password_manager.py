@@ -120,7 +120,13 @@ class PasswordStoreShell(cmd.Cmd):
                     print("Invalid answer, try again!")
 
         # Get password and store identifier and password
-        password = getpass.getpass(f"password for {arg}:")
+        while True:
+            password = getpass.getpass(f"password for {arg}:")
+            if password is None or password == "":
+                print("*** Error: The password cannot be empty")
+            else:
+                break
+        
         self.data_store[arg] = password
         print(f"{arg} was successfully stored")
 
@@ -165,7 +171,7 @@ class PasswordStoreShell(cmd.Cmd):
             return
 
         if arg in self.data_store:
-            print(f"{arg}: {self.data_store[arg]}")
+            print(f"{arg}: '{self.data_store[arg]}'")
         else:
             print(f"*** Error: {arg} is not in password store")
 
