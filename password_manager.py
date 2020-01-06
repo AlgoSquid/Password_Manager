@@ -38,7 +38,7 @@ def create_store():
 
 @cli.command(short_help="Login into password store given store path")
 @click.argument('filepath', type=click.Path(exists=True))
-@click.password_option()
+@click.password_option(confirmation_prompt=False)
 def login(filepath, password):
     """
     Login to password store given store path and password
